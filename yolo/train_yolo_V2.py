@@ -73,7 +73,7 @@ def create_kfold_splits(base_path, source_name, k=5):
 
         yaml_path = Path(base_path) / f"data_fold_{i+1}.yaml"
         # Mapping for HDMI, PS2, USB, VGA, ethernet, and power sockets
-        yaml_content = f"path: {base_path}\ntrain: {train_txt.name}\nval: {val_txt.name}\nnc: 6\nnames: ['HDMI_socket', 'PS2_socket', 'USB_socket', 'VGA_socket', 'ethernet_socket', 'power_socket']"
+        yaml_content = f"path: {base_path}\ntrain: {train_txt.name}\nval: {val_txt.name}\nnc: 7\nnames: ['HDMI_socket', 'PC_Panel', 'PS2_socket', 'USB_socket', 'VGA_socket', 'ethernet_socket', 'power_socket']"
         with open(yaml_path, 'w') as f: f.write(yaml_content)
         fold_yamls.append(yaml_path)
     return fold_yamls, images
@@ -121,7 +121,7 @@ if __name__ == '__main__':
         model = YOLO('yolo11n.pt')
         model.train(
             data='data.yaml', 
-            epochs=150,
+            epochs=300,
             patience=0,
             imgsz=640,
             batch=8,
@@ -149,10 +149,13 @@ if __name__ == '__main__':
         
         final_yaml = Path(BASE_DIR) / "data_final.yaml"
         with open(final_yaml, 'w') as f:
-            f.write(f"path: {BASE_DIR}\ntrain: {final_txt.name}\nval: {final_txt.name}\nnc: 6\nnames: ['HDMI_socket', 'PS2_socket', 'USB_socket', 'VGA_socket', 'ethernet_socket', 'power_socket']")
+            f.write(f"path: {BASE_DIR}\ntrain: {final_txt.name}\nval: {final_txt.name}\nnc: 7\nnames: ['HDMI_socket', 'PC_Panel', 'PS2_socket', 'USB_socket', 'VGA_socket', 'ethernet_socket', 'power_socket']")
 
         print("\n[System] Commencing Final Training on 100% data...")
-        YOLO('yolo11n.pt').train(data=str(final_yaml), epochs=150, val=False, device=device, project='port_metrology', name='yolo11n_ports_FINAL')
+        YOLO('yolo11n.pt').train(data=str(final_yaml), epochs=300, 
+                         val=True,   # enables best.pt saving
+                         device=device, project='port_metrology', 
+                         name='yolo11n_ports_FINAL')
         copy_best_weights('yolo11n_ports_FINAL', Path(BASE_DIR) / 'runs' / 'detect' / 'port_metrology', BASE_DIR)
 
     print("\n🌟 METROLOGY PIPELINE TRAINING COMPLETE 🌟")

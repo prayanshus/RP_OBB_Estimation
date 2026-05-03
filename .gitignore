@@ -1,0 +1,35 @@
+# ── Data ──────────────────────────────────────────────────────────────────────
+data/*.png
+data/panel_normal.json
+
+# ── Model weights ─────────────────────────────────────────────────────────────
+# Keep yolo/weights/ (trained weights) but ignore base pretrained weights
+yolo/yolo11n.pt
+yolo/yolo26n.pt
+sam2/
+
+# ── YOLO generated splits and runs (created at runtime) ───────────────────────
+yolo/train/
+yolo/valid/
+yolo/test/
+yolo/runs/
+yolo/fold_*.txt
+yolo/data_fold_*.yaml
+yolo/data_final.yaml
+yolo/final_train.txt
+
+# ── Outputs (runtime generated — keep folder via .gitkeep) ────────────────────
+outputs/*
+!outputs/.gitkeep
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
+.venv
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

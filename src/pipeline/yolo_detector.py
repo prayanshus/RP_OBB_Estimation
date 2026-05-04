@@ -69,3 +69,69 @@ def get_yolo_bounding_boxes(image_paths, target_class_name, model_path="runs/det
             
     print(f"[YOLO] Extraction complete. Found {target_class_name} in {len(user_boxes)}/{len(image_paths)} frames.")
     return user_boxes
+
+
+def get_all_yolo_boxes_per_frame(image_paths, target_class_name, model_path="runs/detect/train/weights/best.pt", conf_thresh=0.5):
+    """
+    Runs YOLO inference on all images and returns ALL bounding boxes for the
+    target class in every frame — not just the highest-confidence one.
+
+    Used for multi-instance scenarios (e.g. multiple USB sockets) where the
+    caller needs to pick the correct instance rather than blindly taking the
+    best detection.
+
+    Args:
+        image_paths (dict): {fid: Path} dictionary.
+        target_class_name (str): The string name of the class to find.
+        model_path (str): Path to trained YOLOv10/v11 weights.
+        conf_thresh (float): Minimum confidence threshold.
+
+    Returns:
+        dict: {fid: [(box, conf), ...]} where box = [x1, y1, x2, y2] (ints).
+              Frames with no detections are omitted from the dict.
+              Within each frame the list is sorted descending by confidence.
+    """
+    print(f"\n[YOLO] Loading model from {model_path}...")
+    try:
+        model = YOLO(model_path)
+    except Exception as e:
+        print(f"[YOLO ERROR] Could not load model: {e}")
+        return {}
+
+    class_names = model.names
+    name_to_id   = {v: k for k, v in class_names.items()}
+
+    if target_class_name not in name_to_id:
+        raise ValueError(
+            f"Class '{target_class_name}' not found in YOLO model. "
+            f"Available classes: {list(name_to_id.keys())}")
+
+    target_class_id = name_to_id[target_class_name]
+    print(f"[YOLO] Collecting ALL '{target_class_name}' detections in {len(image_paths)} images...")
+
+    all_boxes = {}
+
+    for fid, img_path in image_paths.items():
+        results = model(str(img_path), verbose=False, conf=conf_thresh)
+        boxes   = results[0].boxes
+
+        frame_detections = []
+        for box in boxes:
+            cls_id = int(box.cls[0].item())
+            conf   = float(box.conf[0].item())
+            if cls_id == target_class_id:
+                xyxy = [int(v) for v in box.xyxy[0].cpu().numpy().tolist()]
+                frame_detections.append((xyxy, conf))
+
+        if frame_detections:
+            # Sort by confidence descending so index 0 is always the best
+            frame_detections.sort(key=lambda x: x[1], reverse=True)
+            all_boxes[fid] = frame_detections
+            n = len(frame_detections)
+            print(f"  -> Frame {fid}: {n} detection(s) "
+                  f"[confs: {', '.join(f'{c:.2f}' for _, c in frame_detections)}]")
+
+    total_frames = len(image_paths)
+    frames_with_det = len(all_boxes)
+    print(f"[YOLO] Done. Found '{target_class_name}' in {frames_with_det}/{total_frames} frames.")
+    return all_boxes

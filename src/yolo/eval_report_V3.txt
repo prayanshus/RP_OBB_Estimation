@@ -1,0 +1,28 @@
+### 1. Detection Summary (All Images)
+---
+* **HDMI_socket**: Detected in 11 images
+* **PC_Panel**: Detected in 16 images
+* **PS2_socket**: Detected in 11 images
+* **USB_socket**: Detected in 12 images
+* **VGA_socket**: Detected in 14 images
+* **ethernet_socket**: Detected in 10 images
+* **power_socket**: Detected in 13 images
+
+### 2. Detailed Performance Table
+      Image Name HDMI_socket_IOU HDMI_socket_Conf  PC_Panel_IOU  PC_Panel_Conf PS2_socket_IOU PS2_socket_Conf USB_socket_IOU USB_socket_Conf VGA_socket_IOU VGA_socket_Conf ethernet_socket_IOU ethernet_socket_Conf power_socket_IOU power_socket_Conf
+frame_000319.png             N/A              N/A         0.958          0.988            0.0             0.0            0.0             0.0          0.575           0.398                 0.0                  0.0            0.722             0.645
+frame_000333.png           0.403            0.466         0.981          0.988            0.0             0.0          0.387           0.345          0.707           0.755               0.715                0.663            0.818             0.555
+frame_000353.png           0.444            0.652         0.981          0.971          0.785           0.523          0.369           0.715          0.924           0.526               0.668                0.626            0.946             0.958
+frame_000359.png           0.807            0.946         0.987          0.987          0.795           0.748          0.575           0.773          0.881           0.931               0.888                0.413            0.912             0.995
+frame_000365.png           0.842            0.743         0.985          0.980          0.837           0.873          0.801           0.628          0.857           0.911                 0.0                  0.0            0.962             0.983
+frame_000371.png           0.904            0.762         0.994          0.989          0.825           0.786          0.867           0.709           0.91           0.918               0.894                0.809              N/A               N/A
+frame_000390.png             N/A              N/A         0.989          0.994            N/A             N/A            N/A             N/A          0.949           0.948                 N/A                  N/A              N/A               N/A
+frame_000400.png             N/A              N/A         0.993          0.991            N/A             N/A            N/A             N/A            N/A             N/A                 N/A                  N/A            0.989             0.982
+frame_000426.png           0.653            0.604         0.951          0.966          0.715           0.832          0.397            0.63          0.853           0.427                 0.0                  0.0            0.893              0.89
+frame_000449.png           0.595            0.478         0.969          0.942          0.795           0.795          0.165           0.641           0.81           0.828               0.839                  0.7            0.891              0.89
+frame_000461.png           0.703            0.336         0.967          0.959          0.772            0.78          0.498           0.526          0.898            0.43               0.703                0.699            0.809             0.903
+frame_000468.png           0.806            0.869         0.989          0.959          0.704           0.467          0.587           0.632          0.862           0.557                0.79                0.255            0.887             0.989
+frame_000471.png           0.761             0.53         0.986          0.969          0.869           0.919          0.327           0.517           0.91           0.916               0.696                0.606              0.9             0.972
+frame_000496.png             N/A              N/A         0.970          0.969          0.657           0.546          0.361            0.63          0.882           0.732               0.739                 0.54             0.89             0.846
+frame_000515.png           0.972            0.941         0.989          0.988          0.946           0.952           0.91           0.846           0.99           0.969               0.907                0.883              N/A               N/A
+frame_000531.png             N/A              N/A         0.985          0.986            N/A             N/A            N/A             N/A            N/A             N/A                 N/A                  N/A            0.973             0.992

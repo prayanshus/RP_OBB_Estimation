@@ -52,7 +52,8 @@ def get_latest_weights(base_dir='runs/detect/port_metrology', prefix='yolo11n_co
         return None
     # Sort runs by modification time to grab the absolute latest one
     latest_run = max(runs, key=os.path.getmtime)
-    return os.path.join(latest_run, 'weights', 'best.pt')
+    return os.path.join('weights', 'best.pt')
+    #return os.path.join(latest_run, 'weights', 'best.pt')
 
 # --- Configuration ---
 # Pointing to the root directory containing ALL images

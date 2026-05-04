@@ -34,8 +34,9 @@ SOCKET_CONFIG = {
 # ==============================================================================
 DEBUG = False
 
-# When True, always use the hardcoded sample GT normal regardless of DEBUG.
-# Overrides DEBUG for the panel normal step only.
+# When True, uses the hardcoded sample GT normal instead of estimating it.
+# This flag is the sole controller of normal selection — independent of DEBUG.
+# DEBUG=True does NOT trigger GT normal usage; set this flag explicitly for that.
 USE_SAMPLE_GT_NORMAL = False
 
 
@@ -586,19 +587,50 @@ def estimate_panel_normal(image_paths, poses, K, panel_boxes):
         panel_centers = [(fid, (b[0]+b[2])/2, (b[1]+b[3])/2)
                          for fid, b in panel_boxes.items()]
         panel_center = triangulate_dlt(panel_centers, K, poses)
-        cam_mean     = np.mean([np.array(poses[fid])[:3, 3]
-                                for fid in panel_boxes if fid in poses], axis=0)
+        # poses[fid] is T_w2c; invert to get T_c2w whose translation column
+        # is the camera origin in world coordinates.
+        cam_mean = np.mean([np.linalg.inv(np.array(poses[fid]))[:3, 3]
+                            for fid in panel_boxes if fid in poses], axis=0)
         ref = cam_mean - panel_center
         return ref / np.linalg.norm(ref)
 
     normal, n_inliers = ransac_plane_fit(points_3d)
 
-    # Orient outward: flip if pointing away from cameras
+    # Orient outward: flip if pointing away from cameras.
+    # poses[fid] is T_w2c; inv gives T_c2w whose translation = camera origin in world.
+    # Using the raw T_w2c translation (poses[fid][:3,3]) is WRONG — it is the
+    # translation of the world-to-camera transform, not the camera position.
     panel_center = np.mean(points_3d, axis=0)
-    cam_mean     = np.mean([np.array(poses[fid])[:3, 3]
+    cam_mean     = np.mean([np.linalg.inv(np.array(poses[fid]))[:3, 3]
                             for fid in panel_boxes if fid in poses], axis=0)
+
+    # ── DEBUG: print intermediate values so a mis-flip can be diagnosed ──────
+    if DEBUG:
+        diff = cam_mean - panel_center
+        dot  = np.dot(normal, diff)
+        print(f"[DEBUG][PanelNormal] RANSAC normal (pre-flip) : {normal.round(6)}")
+        print(f"[DEBUG][PanelNormal] panel_center             : {panel_center.round(4)}")
+        print(f"[DEBUG][PanelNormal] cam_mean                 : {cam_mean.round(4)}")
+        print(f"[DEBUG][PanelNormal] cam_mean - panel_center  : {diff.round(4)}")
+        print(f"[DEBUG][PanelNormal] dot(normal, diff)        : {dot:.6f}  "
+              f"({'FLIP' if dot < 0 else 'NO FLIP'})")
+
+    # Stage 1: camera-based orientation — flip if normal points away from cameras
     if np.dot(normal, cam_mean - panel_center) < 0:
         normal = -normal
+
+    # Stage 2: sanity guard — outward normal must have a positive Y component
+    # for this dataset (cameras are positioned above the panel in world Y).
+    # This catches cases where Stage 1 over-flips due to a mis-estimated
+    # panel_center (e.g. SIFT outlier points triangulating to background geometry).
+    if normal[1] < 0:
+        normal = -normal
+        if DEBUG:
+            print("[DEBUG][PanelNormal] Stage-2 guard triggered — normal Y was negative, "
+                  "re-flipped.")
+
+    if DEBUG:
+        print(f"[DEBUG][PanelNormal] Final normal (post-flip) : {normal.round(6)}")
 
     print(f"[Panel Normal] RANSAC: {n_inliers}/{len(points_3d)} inliers. "
           f"Normal: {normal.round(4)}")
@@ -1185,7 +1217,7 @@ if __name__ == "__main__":
     }
 
     # ── 2. Panel normal (once, shared by all sockets) ─────────────────────────
-    use_gt_normal = DEBUG or USE_SAMPLE_GT_NORMAL
+    use_gt_normal = USE_SAMPLE_GT_NORMAL
     if use_gt_normal:
         # Col 2 of the GT VGA rotation matrix — the known panel outward normal.
         panel_normal = np.array([-0.25377680739897346,
@@ -1213,6 +1245,49 @@ if __name__ == "__main__":
             np.save(str(NORMAL_CACHE), panel_normal.astype(np.float64))
             print(f"[Panel Normal] Saved to cache: {NORMAL_CACHE}")
 
+    # ── 3. Reference image (selected ONCE, shared across all classes) ────────
+    TEST_DIR = DATA_DIR / "test"
+    if not TEST_DIR.exists():
+        print(f"[System] Test image directory not found: {TEST_DIR}. Exiting.")
+        exit()
+
+    IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
+    test_images = sorted(
+        p for p in TEST_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+
+    if not test_images:
+        print(f"[System] No image files found in {TEST_DIR}. Exiting.")
+        exit()
+
+    print(f"\n[System] Test images in {TEST_DIR}:")
+    for i, p in enumerate(test_images):
+        print(f"  {i + 1:3}.  {p.name}")
+
+    while True:
+        try:
+            sel = int(input("\nSelect reference image (number): ").strip()) - 1
+            if 0 <= sel < len(test_images):
+                break
+            print(f"[System] Please enter a number between 1 and {len(test_images)}.")
+        except ValueError:
+            print("[System] Invalid input — please enter a number.")
+
+    ref_image_path = test_images[sel]
+
+    try:
+        ref_fid = str(int(ref_image_path.stem.replace("frame_", "")))
+    except ValueError:
+        print(f"[System] Cannot parse frame ID from '{ref_image_path.name}'. "
+              f"Expected filename format: frame_<N>.png. Exiting.")
+        exit()
+    if ref_fid not in poses:
+        print(f"[System] Frame {ref_fid} not found in poses.json. Exiting.")
+        exit()
+    if ref_fid not in image_paths:
+        image_paths[ref_fid] = ref_image_path
+    print(f"[System] Reference frame: {ref_fid}  ({ref_image_path.name})")
+
     all_results = []   # collects {entity, obb} dicts for the consolidated JSON
 
     for target_entity in classes_to_run:
@@ -1221,50 +1296,6 @@ if __name__ == "__main__":
         cfg       = SOCKET_CONFIG[target_entity]
         run_num   = get_next_run_number(OUTPUTS_DIR, target_entity)
         print(f"[Output] Run #{run_num} for {target_entity}")
-
-        # ── 3. Reference image ────────────────────────────────────────────────────
-        TEST_DIR = DATA_DIR / "test"
-        if not TEST_DIR.exists():
-            print(f"[System] Test image directory not found: {TEST_DIR}. Exiting.")
-            continue
-
-        IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
-        test_images = sorted(
-            p for p in TEST_DIR.iterdir()
-            if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
-
-        if not test_images:
-            print(f"[System] No image files found in {TEST_DIR}. Exiting.")
-            continue
-
-        print(f"\n[System] Test images in {TEST_DIR}:")
-        for i, p in enumerate(test_images):
-            print(f"  {i + 1:3}.  {p.name}")
-
-        while True:
-            try:
-                sel = int(input("\nSelect reference image (number): ").strip()) - 1
-                if 0 <= sel < len(test_images):
-                    break
-                print(f"[System] Please enter a number between 1 and {len(test_images)}.")
-            except ValueError:
-                print("[System] Invalid input — please enter a number.")
-
-        ref_image_path = test_images[sel]
-
-        try:
-            ref_fid = str(int(ref_image_path.stem.replace("frame_", "")))
-        except ValueError:
-            print(f"[System] Cannot parse frame ID from '{ref_image_path.name}'. "
-                  f"Expected filename format: frame_<N>.png. Exiting.")
-            continue
-        if ref_fid not in poses:
-            print(f"[System] Frame {ref_fid} not found in poses.json. Exiting.")
-            continue
-        if ref_fid not in image_paths:
-            # Tolerate the case where image_paths was filtered more strictly
-            image_paths[ref_fid] = ref_image_path
-        print(f"[System] Reference frame: {ref_fid}  ({ref_image_path.name})")
 
         # ── 4. Multi-instance socket detection ───────────────────────────────────
         print(f"\n[YOLO] Detecting ALL '{target_entity}' instances "

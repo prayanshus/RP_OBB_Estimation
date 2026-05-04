@@ -20,6 +20,7 @@ src/yolo/final_train.txt
 # ── Outputs (runtime generated) ───────────────────────────────────────────────
 src/outputs/*
 !src/outputs/.gitkeep
+src/pipeline/*.json
 
 # ── Misc ──────────────────────────────────────────────────────────────────────
 filetree.txt

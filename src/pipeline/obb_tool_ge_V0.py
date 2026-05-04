@@ -49,7 +49,7 @@ EPIPOLAR_COLOR = "#00FFFF"
 REPROJ_COLOR_GOOD = "#00FF88"
 REPROJ_COLOR_BAD  = "#FF6600"
 
-ENTITIES = ["vga_socket", "ethernet_socket", "power_socket"]
+ENTITIES = ["vga_socket", "ethernet_socket", "power_socket", "PS2_socket", "HDMI_socket", "USB_socket"]
 
 DEFAULTS_MM = {
     "vga_socket":      6.1,

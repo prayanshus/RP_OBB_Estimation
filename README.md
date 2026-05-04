@@ -10,23 +10,27 @@ Computes world-frame **Oriented Bounding Boxes (OBBs)** for sockets on a PC towe
 
 ```
 RP_OBB_Estimation/
-├── data/                   # 16 input frames + intrinsic.json + poses.json
-├── pipeline/
-│   ├── auto_obb_sam2_cl_V5.py   # Main automated pipeline
-│   ├── obb_tool_ge_V0.py        # Manual annotation fallback (Tkinter GUI)
-│   └── yolo_detector.py         # YOLO inference wrapper
-├── yolo/
-│   ├── data.yaml                # Class definitions
-│   ├── train_yolo_V2.py         # Training script
-│   ├── eval_model_V3.py         # Evaluation script
-│   ├── weights/best.pt          # Trained YOLOv11n weights (not tracked by git)
-│   ├── train/                   # Training split
-│   ├── valid/                   # Validation split
-│   └── test/                    # Test split
-├── sam2/checkpoints/            # SAM2 checkpoint (not tracked by git)
-├── outputs/                     # Generated answers JSON
-├── requirements.txt
-└── requirements_wsl.txt         # Full WSL environment snapshot
+├── docs/                        # Documentation
+├── src/
+│   ├── data/                    # 16 input frames + intrinsic.json + poses.json
+│   ├── pipeline/
+│   │   ├── auto_obb_sam2_cl_V5.py   # Main automated pipeline
+│   │   ├── obb_tool_ge_V0.py        # Manual annotation fallback (Tkinter GUI)
+│   │   └── yolo_detector.py         # YOLO inference wrapper
+│   ├── yolo/
+│   │   ├── data.yaml                # Class definitions
+│   │   ├── train_yolo_V2.py         # Training script
+│   │   ├── eval_model_V3.py         # Evaluation script
+│   │   ├── weights/best.pt          # Trained YOLOv11n weights
+│   │   ├── all_training_data/       # Full dataset (images + labels)
+│   │   ├── train/                   # Training split (not tracked by git)
+│   │   ├── valid/                   # Validation split (not tracked by git)
+│   │   └── test/                    # Test split (not tracked by git)
+│   ├── sam2/checkpoints/            # SAM2 checkpoint (not tracked by git)
+│   ├── outputs/                     # Generated answers JSON (not tracked by git)
+│   ├── requirements.txt
+│   └── requirements_wsl.txt         # Full WSL environment snapshot
+└── README.md
 ```
 
 ---
@@ -35,32 +39,32 @@ RP_OBB_Estimation/
 
 ### 1. Install dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r src/requirements.txt
 ```
 
 ### 2. Install SAM2
 ```bash
-git clone https://github.com/facebookresearch/sam2.git
-pip install -e sam2/
+git clone https://github.com/facebookresearch/sam2.git src/sam2
+pip install -e src/sam2/
 ```
 Download checkpoint:
 ```bash
-mkdir -p sam2/checkpoints
-wget -P sam2/checkpoints https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt
+mkdir -p src/sam2/checkpoints
+wget -P src/sam2/checkpoints https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt
 ```
 
 ### 3. Place YOLO weights
-Copy `best.pt` to `yolo/weights/best.pt`.
+Copy `best.pt` to `src/yolo/weights/best.pt`.
 
 ### 4. Place data
-Copy 16 frames + `intrinsic.json` + `poses.json` + `sample_answers.json` into `data/`.
+Copy 16 frames + `intrinsic.json` + `poses.json` + `sample_answers.json` into `src/data/`.
 
 ---
 
 ## Running the Pipeline
 
 ```bash
-cd pipeline
+cd src/pipeline
 python auto_obb_sam2_cl_V5.py
 ```
 
@@ -83,7 +87,7 @@ python auto_obb_sam2_cl_V5.py --manual_mode
 ## Training YOLO
 
 ```bash
-cd yolo
+cd src/yolo
 python train_yolo_V2.py
 ```
 

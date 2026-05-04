@@ -1156,18 +1156,21 @@ if __name__ == "__main__":
     classes = list(GROUND_TRUTH_DATABASE.keys())
     for i, cls_name in enumerate(classes):
         print(f"  {i+1}. {cls_name}")
+    print(f"  {len(classes)+1}. All classes")
 
-    try:
-        selection     = int(input("\nEnter the number of the component to measure: ")) - 1
-        target_entity = classes[selection]
-    except (ValueError, IndexError):
-        print("[System] Invalid selection. Exiting.")
-        exit()
-
-    target_gt = GROUND_TRUTH_DATABASE[target_entity]
-    cfg       = SOCKET_CONFIG[target_entity]
-    run_num   = get_next_run_number(OUTPUTS_DIR, target_entity)
-    print(f"[Output] Run #{run_num} for {target_entity}")
+    while True:
+        try:
+            selection = int(input("\nEnter the number of the component to measure: ")) - 1
+            if 0 <= selection < len(classes):
+                classes_to_run = [classes[selection]]
+                break
+            elif selection == len(classes):
+                classes_to_run = list(classes)
+                break
+            else:
+                print(f"[System] Please enter a number between 1 and {len(classes)+1}.")
+        except ValueError:
+            print("[System] Invalid input — please enter a number.")
 
     # ── 1. Load data ───────────────────────────────────────────────────────────
     print(f"\n[System] Loading data from {DATA_DIR}...")
@@ -1210,205 +1213,226 @@ if __name__ == "__main__":
             np.save(str(NORMAL_CACHE), panel_normal.astype(np.float64))
             print(f"[Panel Normal] Saved to cache: {NORMAL_CACHE}")
 
-    # ── 3. Reference image ────────────────────────────────────────────────────
-    TEST_DIR = DATA_DIR / "test"
-    if not TEST_DIR.exists():
-        print(f"[System] Test image directory not found: {TEST_DIR}. Exiting.")
-        exit()
+    all_results = []   # collects {entity, obb} dicts for the consolidated JSON
 
-    IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
-    test_images = sorted(
-        p for p in TEST_DIR.iterdir()
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+    for target_entity in classes_to_run:
+        print(f"\n" + "="*50 + f"\n  Processing: {target_entity}\n" + "="*50)
+        target_gt = GROUND_TRUTH_DATABASE[target_entity]
+        cfg       = SOCKET_CONFIG[target_entity]
+        run_num   = get_next_run_number(OUTPUTS_DIR, target_entity)
+        print(f"[Output] Run #{run_num} for {target_entity}")
 
-    if not test_images:
-        print(f"[System] No image files found in {TEST_DIR}. Exiting.")
-        exit()
+        # ── 3. Reference image ────────────────────────────────────────────────────
+        TEST_DIR = DATA_DIR / "test"
+        if not TEST_DIR.exists():
+            print(f"[System] Test image directory not found: {TEST_DIR}. Exiting.")
+            continue
 
-    print(f"\n[System] Test images in {TEST_DIR}:")
-    for i, p in enumerate(test_images):
-        print(f"  {i + 1:3}.  {p.name}")
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
+        test_images = sorted(
+            p for p in TEST_DIR.iterdir()
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
 
-    while True:
-        try:
-            sel = int(input("\nSelect reference image (number): ").strip()) - 1
-            if 0 <= sel < len(test_images):
-                break
-            print(f"[System] Please enter a number between 1 and {len(test_images)}.")
-        except ValueError:
-            print("[System] Invalid input — please enter a number.")
+        if not test_images:
+            print(f"[System] No image files found in {TEST_DIR}. Exiting.")
+            continue
 
-    ref_image_path = test_images[sel]
+        print(f"\n[System] Test images in {TEST_DIR}:")
+        for i, p in enumerate(test_images):
+            print(f"  {i + 1:3}.  {p.name}")
 
-    try:
-        ref_fid = str(int(ref_image_path.stem.replace("frame_", "")))
-    except ValueError:
-        print(f"[System] Cannot parse frame ID from '{ref_image_path.name}'. "
-              f"Expected filename format: frame_<N>.png. Exiting.")
-        exit()
-    if ref_fid not in poses:
-        print(f"[System] Frame {ref_fid} not found in poses.json. Exiting.")
-        exit()
-    if ref_fid not in image_paths:
-        # Tolerate the case where image_paths was filtered more strictly
-        image_paths[ref_fid] = ref_image_path
-    print(f"[System] Reference frame: {ref_fid}  ({ref_image_path.name})")
-
-    # ── 4. Multi-instance socket detection ───────────────────────────────────
-    print(f"\n[YOLO] Detecting ALL '{target_entity}' instances "
-          f"(conf ≥ {cfg['conf_threshold']})...")
-    all_boxes = get_all_yolo_boxes_per_frame(
-        image_paths, target_entity,
-        model_path=YOLO_WEIGHTS, conf_thresh=cfg["conf_threshold"])
-
-    # Let the user pick which instance they care about from the reference frame
-    ref_frame_dets = all_boxes.get(ref_fid, [])
-    ref_box = select_instance_from_reference_image(
-        image_paths[ref_fid], ref_fid, ref_frame_dets, target_entity)
-
-    # Match that instance across the full dataset
-    user_boxes = match_instance_across_frames(all_boxes, ref_fid, ref_box, K, poses)
-
-    # ── Coverage check ────────────────────────────────────────────────────────
-    total_frames    = len(image_paths)
-    matched_frames  = len(user_boxes)
-    coverage_pct    = matched_frames / total_frames * 100
-    COVERAGE_THRESH = 15.0   # percent — below this we warn the user
-
-    use_manual = False   # may be set to True below or in step 5
-
-    print(f"\n[Coverage] Matched instance in {matched_frames}/{total_frames} frames "
-          f"({coverage_pct:.1f}%).")
-
-    if coverage_pct < COVERAGE_THRESH:
-        print(f"[Warning] Coverage {coverage_pct:.1f}% is below the recommended "
-              f"{COVERAGE_THRESH:.0f}%.")
-        print("  1. Proceed anyway")
-        print("  2. Lower YOLO confidence threshold and re-run detection")
-        print("  3. Fall back to manual annotation")
-        cov_choice = input("Enter choice (1/2/3): ").strip()
-
-        if cov_choice == "2":
-            new_conf_str = input(
-                f"New confidence threshold (current: {cfg['conf_threshold']:.2f}): ").strip()
+        while True:
             try:
-                new_conf = float(new_conf_str)
+                sel = int(input("\nSelect reference image (number): ").strip()) - 1
+                if 0 <= sel < len(test_images):
+                    break
+                print(f"[System] Please enter a number between 1 and {len(test_images)}.")
             except ValueError:
-                print("[System] Invalid value — keeping original threshold.")
-                new_conf = cfg["conf_threshold"]
+                print("[System] Invalid input — please enter a number.")
 
-            print(f"\n[YOLO] Re-running with conf ≥ {new_conf}...")
-            all_boxes = get_all_yolo_boxes_per_frame(
-                image_paths, target_entity,
-                model_path=YOLO_WEIGHTS, conf_thresh=new_conf)
+        ref_image_path = test_images[sel]
 
-            new_ref_dets = all_boxes.get(ref_fid, [])
-            if new_ref_dets:
-                reselect = input(
-                    "Re-select instance from reference frame with new detections? (y/n): "
-                ).strip().lower()
-                if reselect == "y":
-                    ref_box = select_instance_from_reference_image(
-                        image_paths[ref_fid], ref_fid, new_ref_dets, target_entity)
-            else:
-                print("[System] Still no detections in reference frame — "
-                      "keeping previously selected box.")
-
-            user_boxes = match_instance_across_frames(
-                all_boxes, ref_fid, ref_box, K, poses)
-            matched_frames = len(user_boxes)
-            print(f"[Coverage] Updated: {matched_frames}/{total_frames} frames "
-                  f"({matched_frames / total_frames * 100:.1f}%).")
-
-        elif cov_choice == "3":
-            use_manual = True
-
-    # ── 5. Manual fallback decision (before box filter) ───────────────────────
-    # --manual_mode forces manual for any class.
-    # Coverage < threshold with choice 3 also triggers it.
-    # Fewer than 3 clean detections also prompts for manual.
-    if not use_manual:
-        use_manual = MANUAL_MODE
-    if not use_manual and len(user_boxes) < 3:
-        print(f"\n[Warning] Only {len(user_boxes)} detection(s) — below threshold of 3.")
-        use_manual = input("Launch manual annotation tool? (y/n): ").strip().lower() == "y"
-    if not use_manual and len(user_boxes) < 2:
-        print("[System] Too few boxes for triangulation and manual not requested. Exiting.")
-        exit()
-
-    # ── 6. Visualisation options ──────────────────────────────────────────────
-    # When DEBUG=True: show SAM2 masks and OBB projection windows interactively.
-    # Projection images are always written to disk either way.
-    show_masks = DEBUG
-
-    # ── 7. Socket pipeline ─────────────────────────────────────────────────────
-    calc_obb        = None
-    surviving_voxels = None
-
-    if use_manual:
-        calc_obb = run_manual_fallback(target_entity, DATA_DIR, OBB_TOOL_PATH)
-        if calc_obb is None:
-            print("[System] Manual annotation did not produce an OBB. Exiting.")
-            exit()
-    else:
-        # Box filter only applies for automated path
-        print(f"[BoxFilter] Filtering {target_entity} detections by reprojection...")
-        user_boxes  = filter_boxes_by_reprojection(user_boxes, K, poses, tol_factor=1.0)
-        box_centers = [(fid, (b[0]+b[2])/2, (b[1]+b[3])/2) for fid, b in user_boxes.items()]
-        if len(user_boxes) < 2:
-            print("[System] Too few boxes after filtering. Exiting.")
-            exit()
         try:
-            rough_center_3d = triangulate_dlt(box_centers, K, poses)
-            masks = generate_sam_masks(image_paths, user_boxes, model_cfg, checkpoint_path)
-            if show_masks:
-                display_sam_masks(image_paths, masks, label=target_entity, bboxes=user_boxes)
-            surviving_voxels = voxel_voting_gpu(
-                K, poses, masks, rough_center_3d,
-                user_boxes=user_boxes,
-                size_mm=30, res_mm=0.5, consensus_ratio=0.875)
-            calc_obb = extract_obb_pca(
-                surviving_voxels,
-                depth_prior_mm=cfg["depth_prior_mm"],
-                panel_normal=panel_normal,
-                percentile=cfg["percentile"],
-                use_minarearect=cfg["use_minarearect"])
-        except Exception as e:
-            print(f"\n[FATAL ERROR] Pipeline failed: {e}")
-            raise
+            ref_fid = str(int(ref_image_path.stem.replace("frame_", "")))
+        except ValueError:
+            print(f"[System] Cannot parse frame ID from '{ref_image_path.name}'. "
+                  f"Expected filename format: frame_<N>.png. Exiting.")
+            continue
+        if ref_fid not in poses:
+            print(f"[System] Frame {ref_fid} not found in poses.json. Exiting.")
+            continue
+        if ref_fid not in image_paths:
+            # Tolerate the case where image_paths was filtered more strictly
+            image_paths[ref_fid] = ref_image_path
+        print(f"[System] Reference frame: {ref_fid}  ({ref_image_path.name})")
 
-    print("\n================ FINAL OBB ================")
-    print(json.dumps(calc_obb, indent=2))
+        # ── 4. Multi-instance socket detection ───────────────────────────────────
+        print(f"\n[YOLO] Detecting ALL '{target_entity}' instances "
+              f"(conf ≥ {cfg['conf_threshold']})...")
+        all_boxes = get_all_yolo_boxes_per_frame(
+            image_paths, target_entity,
+            model_path=YOLO_WEIGHTS, conf_thresh=cfg["conf_threshold"])
 
-    # ── Save OBB JSON ─────────────────────────────────────────────────────────
-    obb_json_path = OUTPUTS_DIR / f"{target_entity}_run{run_num}.json"
-    with open(obb_json_path, "w") as _f:
-        json.dump({"entity": target_entity, "run": run_num, "obb": calc_obb}, _f, indent=2)
-    print(f"[Output] OBB saved to {obb_json_path}")
+        # Let the user pick which instance they care about from the reference frame
+        ref_frame_dets = all_boxes.get(ref_fid, [])
+        ref_box = select_instance_from_reference_image(
+            image_paths[ref_fid], ref_fid, ref_frame_dets, target_entity)
 
-    # Projection images always saved; window shown only when DEBUG=True.
-    proj_save_dir = OUTPUTS_DIR / target_entity / f"run{run_num}"
+        # Match that instance across the full dataset
+        user_boxes = match_instance_across_frames(all_boxes, ref_fid, ref_box, K, poses)
 
-    if target_gt:
-        iou_3d  = calculate_exact_3d_iou(calc_obb, target_gt)
-        ious_2d = calculate_2d_projection_iou(
-            K, poses, calc_obb, target_gt, image_paths, user_boxes)
-        print("\n================ EVALUATION ================")
-        print(f"Exact 3D Volumetric IoU : {iou_3d * 100:.2f}%")
-        print(f"Avg 2D Polygonal IoU    : {np.mean(list(ious_2d.values())) * 100:.2f}%")
-        print("=" * 43)
-        display_obb_projections(K, poses, calc_obb, target_gt, image_paths, user_boxes,
-                                save_dir=proj_save_dir, show=DEBUG)
-        if surviving_voxels is not None:
-            display_3d_obbs(calc_obb, target_gt, surviving_voxels)
-    else:
-        display_obb_projections(K, poses, calc_obb, None, image_paths, user_boxes,
-                                save_dir=proj_save_dir, show=DEBUG)
+        # ── Coverage check ────────────────────────────────────────────────────────
+        total_frames    = len(image_paths)
+        matched_frames  = len(user_boxes)
+        coverage_pct    = matched_frames / total_frames * 100
+        COVERAGE_THRESH = 15.0   # percent — below this we warn the user
 
-    print(f"[Output] Projection images saved to {proj_save_dir}")
+        use_manual = False   # may be set to True below or in step 5
 
-    # ── OBB overlay on the user's reference image (always shown) ─────────────
-    print("\n[Output] Displaying OBB on your reference image...")
-    display_obb_on_reference_image(
-        K, poses, calc_obb, ref_fid, ref_image_path,
-        save_dir=OUTPUTS_DIR / target_entity / f"run{run_num}")
+        print(f"\n[Coverage] Matched instance in {matched_frames}/{total_frames} frames "
+              f"({coverage_pct:.1f}%).")
+
+        if coverage_pct < COVERAGE_THRESH:
+            print(f"[Warning] Coverage {coverage_pct:.1f}% is below the recommended "
+                  f"{COVERAGE_THRESH:.0f}%.")
+            print("  1. Proceed anyway")
+            print("  2. Lower YOLO confidence threshold and re-run detection")
+            print("  3. Fall back to manual annotation")
+            cov_choice = input("Enter choice (1/2/3): ").strip()
+
+            if cov_choice == "2":
+                new_conf_str = input(
+                    f"New confidence threshold (current: {cfg['conf_threshold']:.2f}): ").strip()
+                try:
+                    new_conf = float(new_conf_str)
+                except ValueError:
+                    print("[System] Invalid value — keeping original threshold.")
+                    new_conf = cfg["conf_threshold"]
+
+                print(f"\n[YOLO] Re-running with conf ≥ {new_conf}...")
+                all_boxes = get_all_yolo_boxes_per_frame(
+                    image_paths, target_entity,
+                    model_path=YOLO_WEIGHTS, conf_thresh=new_conf)
+
+                new_ref_dets = all_boxes.get(ref_fid, [])
+                if new_ref_dets:
+                    reselect = input(
+                        "Re-select instance from reference frame with new detections? (y/n): "
+                    ).strip().lower()
+                    if reselect == "y":
+                        ref_box = select_instance_from_reference_image(
+                            image_paths[ref_fid], ref_fid, new_ref_dets, target_entity)
+                else:
+                    print("[System] Still no detections in reference frame — "
+                          "keeping previously selected box.")
+
+                user_boxes = match_instance_across_frames(
+                    all_boxes, ref_fid, ref_box, K, poses)
+                matched_frames = len(user_boxes)
+                print(f"[Coverage] Updated: {matched_frames}/{total_frames} frames "
+                      f"({matched_frames / total_frames * 100:.1f}%).")
+
+            elif cov_choice == "3":
+                use_manual = True
+
+        # ── 5. Manual fallback decision (before box filter) ───────────────────────
+        # --manual_mode forces manual for any class.
+        # Coverage < threshold with choice 3 also triggers it.
+        # Fewer than 3 clean detections also prompts for manual.
+        if not use_manual:
+            use_manual = MANUAL_MODE
+        if not use_manual and len(user_boxes) < 3:
+            print(f"\n[Warning] Only {len(user_boxes)} detection(s) — below threshold of 3.")
+            use_manual = input("Launch manual annotation tool? (y/n): ").strip().lower() == "y"
+        if not use_manual and len(user_boxes) < 2:
+            print("[System] Too few boxes for triangulation and manual not requested. Exiting.")
+            continue
+
+        # ── 6. Visualisation options ──────────────────────────────────────────────
+        # When DEBUG=True: show SAM2 masks and OBB projection windows interactively.
+        # Projection images are always written to disk either way.
+        show_masks = DEBUG
+
+        # ── 7. Socket pipeline ─────────────────────────────────────────────────────
+        calc_obb        = None
+        surviving_voxels = None
+
+        if use_manual:
+            calc_obb = run_manual_fallback(target_entity, DATA_DIR, OBB_TOOL_PATH)
+            if calc_obb is None:
+                print("[System] Manual annotation did not produce an OBB. Exiting.")
+                continue
+        else:
+            # Box filter only applies for automated path
+            print(f"[BoxFilter] Filtering {target_entity} detections by reprojection...")
+            user_boxes  = filter_boxes_by_reprojection(user_boxes, K, poses, tol_factor=1.0)
+            box_centers = [(fid, (b[0]+b[2])/2, (b[1]+b[3])/2) for fid, b in user_boxes.items()]
+            if len(user_boxes) < 2:
+                print("[System] Too few boxes after filtering. Exiting.")
+                continue
+            try:
+                rough_center_3d = triangulate_dlt(box_centers, K, poses)
+                masks = generate_sam_masks(image_paths, user_boxes, model_cfg, checkpoint_path)
+                if show_masks:
+                    display_sam_masks(image_paths, masks, label=target_entity, bboxes=user_boxes)
+                surviving_voxels = voxel_voting_gpu(
+                    K, poses, masks, rough_center_3d,
+                    user_boxes=user_boxes,
+                    size_mm=30, res_mm=0.5, consensus_ratio=0.875)
+                calc_obb = extract_obb_pca(
+                    surviving_voxels,
+                    depth_prior_mm=cfg["depth_prior_mm"],
+                    panel_normal=panel_normal,
+                    percentile=cfg["percentile"],
+                    use_minarearect=cfg["use_minarearect"])
+            except Exception as e:
+                print(f"\n[FATAL ERROR] Pipeline failed: {e}")
+                raise
+
+        print("\n================ FINAL OBB ================")
+        print(json.dumps(calc_obb, indent=2))
+
+        # Collect for consolidated JSON
+        all_results.append({"entity": target_entity, "run": run_num, "obb": calc_obb})
+
+        # ── Save per-class OBB JSON ───────────────────────────────────────────────
+        obb_json_path = OUTPUTS_DIR / f"{target_entity}_run{run_num}.json"
+        with open(obb_json_path, "w") as _f:
+            json.dump({"entity": target_entity, "run": run_num, "obb": calc_obb}, _f, indent=2)
+        print(f"[Output] OBB saved to {obb_json_path}")
+
+        # Projection images always saved; window shown only when DEBUG=True.
+        proj_save_dir = OUTPUTS_DIR / target_entity / f"run{run_num}"
+
+        if target_gt:
+            iou_3d  = calculate_exact_3d_iou(calc_obb, target_gt)
+            ious_2d = calculate_2d_projection_iou(
+                K, poses, calc_obb, target_gt, image_paths, user_boxes)
+            print("\n================ EVALUATION ================")
+            print(f"Exact 3D Volumetric IoU : {iou_3d * 100:.2f}%")
+            print(f"Avg 2D Polygonal IoU    : {np.mean(list(ious_2d.values())) * 100:.2f}%")
+            print("=" * 43)
+            display_obb_projections(K, poses, calc_obb, target_gt, image_paths, user_boxes,
+                                    save_dir=proj_save_dir, show=DEBUG)
+            if surviving_voxels is not None:
+                display_3d_obbs(calc_obb, target_gt, surviving_voxels)
+        else:
+            display_obb_projections(K, poses, calc_obb, None, image_paths, user_boxes,
+                                    save_dir=proj_save_dir, show=DEBUG)
+
+        print(f"[Output] Projection images saved to {proj_save_dir}")
+
+        # ── OBB overlay on the user's reference image (always shown) ─────────────
+        print("\n[Output] Displaying OBB on your reference image...")
+        display_obb_on_reference_image(
+            K, poses, calc_obb, ref_fid, ref_image_path,
+            save_dir=OUTPUTS_DIR / target_entity / f"run{run_num}")
+    # ── Consolidated results JSON ─────────────────────────────────────────────
+    if all_results:
+        run_tag    = all_results[0]["run"] if len(all_results) == 1 else "multi"
+        consolidated_path = OUTPUTS_DIR / f"results_{run_tag}.json"
+        # Write only entity + obb (matches sample_answers.json format)
+        payload = [{"entity": r["entity"], "obb": r["obb"]} for r in all_results]
+        with open(consolidated_path, "w") as _cf:
+            json.dump(payload, _cf, indent=2)
+        print(f"\n[Output] Consolidated results saved to {consolidated_path}")

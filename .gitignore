@@ -1,7 +1,4 @@
-# ── Data ──────────────────────────────────────────────────────────────────────
-src/data/*.png
-src/data/panel_normal.json
-src/data/test/
+
 # ── Model weights ─────────────────────────────────────────────────────────────
 src/yolo/yolo11n.pt
 src/yolo/yolo26n.pt

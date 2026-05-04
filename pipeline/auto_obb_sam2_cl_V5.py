@@ -20,10 +20,10 @@ from yolo_detector import get_yolo_bounding_boxes
 SOCKET_CONFIG = {
     "VGA_socket":      {"depth_prior_mm": 6.1, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": True},
     "ethernet_socket": {"depth_prior_mm": 1.0, "conf_threshold": 0.45, "percentile": 1, "use_minarearect": False},
-    "power_socket":    {"depth_prior_mm": 6.0, "conf_threshold": 0.25, "percentile": 2.5, "use_minarearect": False},
-    "PS2_socket":      {"depth_prior_mm": 6.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
-    "HDMI_socket":     {"depth_prior_mm": 8.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
-    "USB_socket":      {"depth_prior_mm": 4.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
+    "power_socket":    {"depth_prior_mm": 2.0, "conf_threshold": 0.25, "percentile": 2.5, "use_minarearect": False},
+    "PS2_socket":      {"depth_prior_mm": 1.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
+    "HDMI_socket":     {"depth_prior_mm": 1.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
+    "USB_socket":      {"depth_prior_mm": 1.0, "conf_threshold": 0.25, "percentile": 1, "use_minarearect": False},
 }
 
 

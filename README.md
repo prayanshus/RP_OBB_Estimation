@@ -42,6 +42,9 @@ RP_OBB_Estimation/
 
 ## Setup
 
+### Create a Python Environment
+Create an environment with Python 3.11. Example, using miniconda: conda create -n env_py_311 python=3.11.
+
 ### 1. Install dependencies
 ```bash
 pip install -r src/requirements.txt
